@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>首尔地图搜索收藏（SerpApi + Leaflet）</title>
+    <title>首尔地图搜索收藏</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
@@ -11,7 +11,7 @@
         #map { height:400px; width:100%; margin-bottom:20px; border-radius:8px; }
         #searchContainer { display:flex; gap:5px; margin-bottom:10px; }
         #searchInput { flex:1; }
-        #searchResults .list-group-item { display:flex; align-items:center; gap:10px; }
+        #searchResults .list-group-item { display:flex; align-items:center; gap:10px; cursor:pointer; }
         #searchResults img { width:60px; height:45px; object-fit:cover; border-radius:4px; }
         .card-container { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
         .marker-card { flex:1 1 calc(33% - 10px); background:#fff; border-radius:8px; padding:10px; box-shadow:0 1px 5px rgba(0,0,0,0.1); }
@@ -38,13 +38,12 @@
         </div>
     </nav>
 </header>
-
 <h1>首尔地图搜索收藏</h1>
 
 <div id="searchContainer">
     <input id="searchInput" type="text" class="form-control" placeholder="搜索首尔地点（中/英/韩文）">
     <button id="btnSearch" class="btn btn-primary">搜索</button>
-    <button id="btnClear" class="btn btn-secondary">清空</button>
+    <button id="btnClear" class="btn btn-secondary">清空搜索结果</button>
 </div>
 
 <div id="searchResults" class="list-group mb-3"></div>
@@ -69,39 +68,62 @@
     markers.forEach(addMapMarker);
     renderMarkerList();
 
-    // 搜索 SerpApi
+    // 纯前端调用 SerpApi 搜索
     async function doSearch() {
         const query = document.getElementById('searchInput').value.trim();
         if(!query) return;
 
+        const apiKey = "e49cacaad8124d6eacf5291b89608d336d3a747c7c93e4dd6bc3f74469513a81"; // <-- 替换为你的 SerpApi Key
+        const url = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(query)}&location=Seoul&api_key=${apiKey}`;
+
         try {
-            // 调用你自己的 ASP.NET 后端接口
-            const res = await fetch(`/api/Map/search?query=${encodeURIComponent(query)}`);
+            const res = await fetch(url);
             const data = await res.json();
 
-            const place = data.place_results;
-            if(!place) { alert("未找到结果"); return; }
+            const results = data.local_results || [];
+            const resultsDiv = document.getElementById('searchResults');
+            resultsDiv.innerHTML = '';
 
-            const photoUrl = place.thumbnail || (place.images?.[0]?.serpapi_thumbnail) || 'https://via.placeholder.com/80x60';
-            const m = {
-                name: place.title,
-                address: place.address,
-                lat: place.gps_coordinates.latitude,
-                lng: place.gps_coordinates.longitude,
-                photo: photoUrl
-            };
+            if(results.length === 0) {
+                resultsDiv.innerHTML = '<li class="list-group-item">未找到结果</li>';
+                return;
+            }
 
-            markers.push(m);
-            localStorage.setItem('markers', JSON.stringify(markers));
-            addMapMarker(m);
-            renderMarkerList();
+            results.forEach(place => {
+                const photo = place.thumbnail || 'https://via.placeholder.com/80x60';
+                const li = document.createElement('li');
+                li.className = 'list-group-item';
+                li.innerHTML = `
+                <img src="${photo}" alt="图">
+                <div>
+                  <strong>${place.title}</strong><br>
+                  ${place.address || ''}
+                </div>
+                <button class="btn btn-sm btn-success ms-auto">收藏</button>
+            `;
+                // 点击收藏
+                li.querySelector('button').addEventListener('click', ()=>{
+                    const m = {
+                        name: place.title,
+                        address: place.address,
+                        lat: place.gps_coordinates.latitude,
+                        lng: place.gps_coordinates.longitude,
+                        photo: photo
+                    };
+                    markers.push(m);
+                    localStorage.setItem('markers', JSON.stringify(markers));
+                    addMapMarker(m);
+                    renderMarkerList();
+                    alert(`${m.name} 已收藏`);
+                });
+                resultsDiv.appendChild(li);
+            });
 
         } catch(err) {
             console.error(err);
-            alert('搜索失败，请检查后端是否运行或 API Key 是否正确');
+            alert('搜索失败，请检查 API Key 是否正确');
         }
     }
-
 
     // 添加地图标记
     function addMapMarker(m) {
